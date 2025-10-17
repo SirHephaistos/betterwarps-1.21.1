@@ -6,32 +6,40 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import me.lucko.fabric.api.permissions.v0.Permissions;
 import net.minecraft.command.CommandSource; // for suggestMatching
-import net.minecraft.server.command.CommandManager;
+import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
+import net.minecraft.server.world.ChunkTicketType;
+import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
 import net.minecraft.registry.RegistryKey;
+import net.minecraft.util.Identifier;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.ChunkPos;
 import net.minecraft.world.World;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
 
 public final class WarpCommands {
     private WarpCommands() {}
+    private static final Logger LOGGER = LoggerFactory.getLogger("simplybetterwarps");
+
 
     // --- Suggestion provider for warp names in the current dimension ---
-    private static final SuggestionProvider<ServerCommandSource> WARP_NAME_SUGGESTER = (ctx, builder) -> {
-        var world = ctx.getSource().getWorld();
-        if (world == null) return builder.buildFuture();
-        var names = WarpManager.get().listWarps(world.getRegistryKey()).keySet();
-        return CommandSource.suggestMatching(names, builder);
+    private static final SuggestionProvider<ServerCommandSource> WARP_NAME_SUGGESTER= (ctx, builder) -> {
+        var wManager = WarpManager.get();
+        var warps = wManager.listWarps().keySet().toArray(new String[0]);
+        return CommandSource.suggestMatching(warps, builder);
     };
 
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
         // ----- Reusable executors -----
         Command<ServerCommandSource> HELP_EXECUTOR = ctx -> {
             ctx.getSource().sendFeedback(() -> Text.literal("""
-                [BetterWarps] Commands:
+                [Simplybetterwarps] Commands:
 /warp <name>      - teleport to a warp in the current dimension
 /setwarp <name>   - create or overwrite a warp at your position
 /delwarp <name>   - delete a warp in the current dimension
@@ -40,94 +48,112 @@ public final class WarpCommands {
 """), false);
             return 1;
         };
-
         Command<ServerCommandSource> WARPTP_EXECUTOR = ctx -> {
-            ServerPlayerEntity p = ctx.getSource().getPlayer();
-            if (p == null) return 0;
-
+            var source = ctx.getSource();
+            var player = source.getPlayer();
+            if (player == null) {
+                source.sendError(Text.literal("Only players can use warps."));
+                return 0;
+            }
             String warpName = StringArgumentType.getString(ctx, "name");
-            RegistryKey<World> dimKey = p.getWorld().getRegistryKey();
-
-            WarpPoint wp = WarpManager.get().getWarp(dimKey, warpName);
-            if (wp == null) {
-                ctx.getSource().sendError(Text.literal("Warp not found in this dimension: " + warpName));
+            var wManager = WarpManager.get();
+            try{
+                WarpPoint wp = wManager.getWarp(warpName);
+                // Resolve target dimension from the warp itself
+                Identifier dimId = Identifier.tryParse(wp.dimensionId);
+                if (dimId == null) {
+                    source.sendError(Text.literal("Invalid dimension id on warp: " + wp.dimensionId));
+                    return 0;
+                }
+                RegistryKey<World> targetKey = RegistryKey.of(RegistryKeys.WORLD, dimId);
+                ServerWorld targetWorld = player.getServer().getWorld(targetKey);
+                if (targetWorld == null) {
+                    source.sendError(Text.literal("Target dimension not found on server: " + wp.dimensionId));
+                    return 0;
+                }
+                BlockPos targetPos = BlockPos.ofFloored(wp.x, wp.y, wp.z);
+                ChunkPos chunkPos = new ChunkPos(targetPos);
+                // Load chunk ticket to ensure the chunk is loaded
+                targetWorld.getChunkManager().addTicket(ChunkTicketType.POST_TELEPORT, chunkPos, 1, player.getId());
+                // Force load synchronously to FULL status (guard against edge cases)
+                targetWorld.getChunk(chunkPos.x, chunkPos.z);
+                player.teleport(targetWorld, wp.x, wp.y, wp.z, wp.yaw, wp.pitch);
+                source.sendFeedback(() -> Text.literal("Teleported to '" + warpName + "' in " + wp.dimensionId + "."), false);
+                return 1;
+            }catch (Exception e){
+                source.sendError(Text.literal(e.getMessage()));
+                LOGGER.error("Error during warp teleport:{}", e.getMessage(), e);
                 return 0;
             }
-            var world = p.getServer().getWorld(dimKey);
-            if (world == null) {
-                ctx.getSource().sendError(Text.literal("World is not available: " + dimKey.getValue()));
-                return 0;
-            }
-            p.teleport(world, wp.x, wp.y, wp.z, wp.yaw, wp.pitch);
-            ctx.getSource().sendFeedback(() -> Text.literal("Teleported to '" + warpName + "'."), false);
-            return 1;
         };
-
         Command<ServerCommandSource> SETWARP_EXECUTOR = ctx -> {
             ServerPlayerEntity p = ctx.getSource().getPlayer();
-            if (p == null) return 0;
             String warpName = StringArgumentType.getString(ctx, "name");
-            WarpManager.get().setWarp(p, warpName);
-            ctx.getSource().sendFeedback(() -> Text.literal("Warp '" + warpName + "' saved."), false);
+            //if not a player, send error feedback
+            if (p == null) {
+                ctx.getSource().sendError(Text.literal("[Simplybetterwarps] Only players can set warps."));
+                return 0;
+            }
+            WarpPoint wp = WarpPoint.fromPlayerPosition(p);
+            var wManager = WarpManager.get();
+            wManager.setWarp(warpName, wp);
+            ctx.getSource().sendFeedback(() -> Text.literal("[Simplybetterwarps] Warp '%s' saved. at %s%s".formatted(warpName, wp.dimensionId, String.format(" (%.1f, %.1f, %.1f)", wp.x, wp.y, wp.z))), false);
             return 1;
         };
-
         Command<ServerCommandSource> DELWARP_EXECUTOR = ctx -> {
             ServerPlayerEntity p = ctx.getSource().getPlayer();
-            if (p == null) return 0;
             String warpName = StringArgumentType.getString(ctx, "name");
-            boolean ok = WarpManager.get().delWarp(p.getWorld().getRegistryKey(), warpName);
+            WarpPoint wp = WarpPoint.fromPlayerPosition(p);
+            var wManager = WarpManager.get();
+            boolean ok = WarpManager.get().delWarp(warpName);
             if (ok) {
-                ctx.getSource().sendFeedback(() -> Text.literal("Warp deleted: " + warpName), false);
+                ctx.getSource().sendFeedback(() -> Text.literal("[Simplybetterwarps] Warp deleted: " + warpName), false);
                 return 1;
             } else {
-                ctx.getSource().sendError(Text.literal("Warp not found: " + warpName));
+                ctx.getSource().sendError(Text.literal("[Simplybetterwarps] Warp not found: " + warpName));
                 return 0;
             }
         };
-
         Command<ServerCommandSource> LIST_EXECUTOR = ctx -> {
             ServerPlayerEntity p = ctx.getSource().getPlayer();
-            if (p == null) return 0;
-            var names = WarpManager.get().listWarps(p.getWorld().getRegistryKey()).keySet();
+            var wManager = WarpManager.get();
+            var names = WarpManager.get().listWarps().keySet().stream().sorted().toList();
             ctx.getSource().sendFeedback(
                     () -> Text.literal("Warps (" + names.size() + "): " + String.join(", ", names)),
                     false
             );
             return 1;
         };
-
-        // /betterwarps -> usage hint
+        // /simplybetterwarps -> usage hint
         dispatcher.register(
-                literal("betterwarps")
-                        .requires(src -> Permissions.check(src, "betterwarps-basic", 0))
+                literal("simplybetterwarps")
+                        .requires(src -> Permissions.check(src, "simplybetterwarps-basic", 0))
                         .executes(ctx -> {
-                            ctx.getSource().sendFeedback(() -> Text.literal("Usage: /warp help"), false);
+                            ctx.getSource().sendFeedback(() -> Text.literal("[Simplybetterwarps] Usage: /warp help"), false);
                             return 1;
                         })
         );
-
         // /warp, /warp help, /warp <name> (with suggestions)
         dispatcher.register(
                 literal("warp")
-                        .requires(src -> Permissions.check(src, "betterwarps-basic", 0))
+                        .requires(src -> Permissions.check(src, "simplybetterwarps-basic", 0))
                         .executes(HELP_EXECUTOR)
                         .then(literal("help")
-                                .requires(src -> Permissions.check(src, "betterwarps-basic", 0))
+                                .requires(src -> Permissions.check(src, "simplybetterwarps-basic", 0))
                                 .executes(HELP_EXECUTOR)
                         )
                         .then(argument("name", StringArgumentType.word())
-                                .suggests(WARP_NAME_SUGGESTER) // <--- suggestions here
-                                .requires(src -> Permissions.check(src, "betterwarps-warpto", 0))
+                                .suggests(WARP_NAME_SUGGESTER)
+                                .requires(src -> Permissions.check(src, "simplybetterwarps-warpto", 0))
                                 .executes(WARPTP_EXECUTOR)
                         )
         );
-
         // /setwarp <name> (no suggestions by default; names are user-defined)
         dispatcher.register(
                 literal("setwarp")
-                        .requires(src -> Permissions.check(src, "betterwarps-setwarp", 2))
+                        .requires(src -> Permissions.check(src, "simplybetterwarps-setwarp", 2))
                         .then(argument("name", StringArgumentType.word())
+                                .suggests(WARP_NAME_SUGGESTER)
                                 .executes(SETWARP_EXECUTOR)
                         )
         );
@@ -135,17 +161,16 @@ public final class WarpCommands {
         // /delwarp <name> (with suggestions)
         dispatcher.register(
                 literal("delwarp")
-                        .requires(src -> Permissions.check(src, "betterwarps-delwarp", 2))
+                        .requires(src -> Permissions.check(src, "simplybetterwarps-delwarp", 2))
                         .then(argument("name", StringArgumentType.word())
-                                .suggests(WARP_NAME_SUGGESTER) // <--- suggestions here
+                                .suggests(WARP_NAME_SUGGESTER)
                                 .executes(DELWARP_EXECUTOR)
                         )
         );
-
         // /warps
         dispatcher.register(
                 literal("warps")
-                        .requires(src -> Permissions.check(src, "betterwarps-basic", 0))
+                        .requires(src -> Permissions.check(src, "simplybetterwarps-basic", 0))
                         .executes(LIST_EXECUTOR)
         );
     }

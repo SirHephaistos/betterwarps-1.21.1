@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 import lombok.Getter;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.server.network.ServerPlayerEntity;
-import net.minecraft.util.math.BlockPos;
+import net.minecraft.util.math.Vec3d;
 import net.minecraft.world.World;
 
 @Getter
@@ -36,7 +36,7 @@ public class WarpPoint {
      * */
     public static WarpPoint fromPlayerPosition(ServerPlayerEntity player) {
         RegistryKey<World> dimensionKey = player.getWorld().getRegistryKey();
-        BlockPos playerPos = player.getBlockPos();
+        Vec3d playerPos = player.getBlockPos().toCenterPos();
         return new WarpPoint(
                 dimensionKey.getValue().toString(),
                 playerPos.getX(),
@@ -46,6 +46,7 @@ public class WarpPoint {
                 player.getPitch()
         );
     }
+
     /**
      * Converts this WarpPoint to a JSON Object suitable for saving to disk.
      */
