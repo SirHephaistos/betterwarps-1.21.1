@@ -1,0 +1,31 @@
+{
+	"schemaVersion": 1,
+	"id": "simplybetterwarps",
+	"version": "${version}",
+	"name": "simplyBetterWarps",
+	"description": "Simple server side warp mod for Minecraft Fabric!",
+	"authors": [
+		"Sir Hephaistos"
+	],
+	"contact": {
+		"homepage": "https://fabricmc.net/",
+		"sources": "https://github.com/FabricMC/fabric-example-mod"
+	},
+	"license": "CC0-1.0",
+	"icon": "assets/betterwarps/icon.png",
+	"environment": "*",
+	"entrypoints": {
+      "server": [
+        "as.sirhephaistos.BetterWarpsServer"
+      ]
+	},
+	"depends": {
+		"fabricloader": ">=0.17.2",
+		"minecraft": "~1.21.1",
+		"java": ">=21",
+		"fabric-api": "*"
+	},
+	"suggests": {
+		"another-mod": "*"
+	}
+}
