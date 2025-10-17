@@ -20,6 +20,8 @@ import net.minecraft.world.World;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Objects;
+
 import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
 
@@ -67,7 +69,7 @@ public final class WarpCommands {
                     return 0;
                 }
                 RegistryKey<World> targetKey = RegistryKey.of(RegistryKeys.WORLD, dimId);
-                ServerWorld targetWorld = player.getServer().getWorld(targetKey);
+                ServerWorld targetWorld = Objects.requireNonNull(player.getServer()).getWorld(targetKey);
                 if (targetWorld == null) {
                     source.sendError(Text.literal("Target dimension not found on server: " + wp.dimensionId()));
                     return 0;
@@ -102,10 +104,7 @@ public final class WarpCommands {
             return 1;
         };
         Command<ServerCommandSource> DELWARP_EXECUTOR = ctx -> {
-            ServerPlayerEntity p = ctx.getSource().getPlayer();
             String warpName = StringArgumentType.getString(ctx, "name");
-            WarpPoint wp = WarpPoint.fromPlayerPosition(p);
-            var wManager = WarpManager.get();
             boolean ok = WarpManager.get().delWarp(warpName);
             if (ok) {
                 ctx.getSource().sendFeedback(() -> Text.literal("[Simplybetterwarps] Warp deleted: " + warpName), false);
@@ -116,8 +115,6 @@ public final class WarpCommands {
             }
         };
         Command<ServerCommandSource> LIST_EXECUTOR = ctx -> {
-            ServerPlayerEntity p = ctx.getSource().getPlayer();
-            var wManager = WarpManager.get();
             var names = WarpManager.get().listWarps().keySet().stream().sorted().toList();
             ctx.getSource().sendFeedback(
                     () -> Text.literal("Warps (" + names.size() + "): " + String.join(", ", names)),
