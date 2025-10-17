@@ -4,13 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.util.Identifier;
-import net.minecraft.world.World;
-import net.minecraft.server.MinecraftServer;
-import net.minecraft.server.network.ServerPlayerEntity;
 
-import java.io.IOException;
 import java.io.Reader;
 import java.io.Writer;
 import java.nio.file.Files;
@@ -25,16 +19,26 @@ import java.util.Map;
  */
 public final class WarpManager {
     private static final WarpManager INSTANCE = new WarpManager();
-    public static WarpManager get() { return INSTANCE; }
-
-    /** Map<warpNameLower, WarpPoint> */
+    /**
+     * Map<warpNameLower, WarpPoint>
+     */
     private final Map<String, WarpPoint> warps = new HashMap<>();
-
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
-    private Path file;
     private final String fileName = "warps.json";
+    private Path file;
+    private WarpManager() {
+    }
 
-    private WarpManager() {}
+    public static WarpManager get() {
+        return INSTANCE;
+    }
+
+    /**
+     * Utility: normalize user-provided warp names (lowercase, trimmed).
+     */
+    private static String normalizeName(String name) {
+        return name.trim().toLowerCase(Locale.ROOT);
+    }
 
     /**
      * Loads warps from config/simplybetter/warps.json.
@@ -65,6 +69,7 @@ public final class WarpManager {
             e.printStackTrace();
         }
     }
+
     /**
      * Saves current warps to config/simplybetter/warps.json (pretty JSON).
      * Creates directories and file if needed.
@@ -85,12 +90,6 @@ public final class WarpManager {
         } catch (Exception e) {
             e.printStackTrace();
         }
-    }
-    /**
-     * Utility: normalize user-provided warp names (lowercase, trimmed).
-     */
-    private static String normalizeName(String name) {
-        return name.trim().toLowerCase(Locale.ROOT);
     }
 
     /**
@@ -118,6 +117,7 @@ public final class WarpManager {
 
     /**
      * Gets a warp point by name. Returns null if not found.
+     *
      * @param warpName Name of the warp to retrieve.
      * @return WarpPoint or null if not found.
      */

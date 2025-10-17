@@ -5,14 +5,14 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import me.lucko.fabric.api.permissions.v0.Permissions;
-import net.minecraft.command.CommandSource; // for suggestMatching
+import net.minecraft.command.CommandSource;
+import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ChunkTicketType;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
-import net.minecraft.registry.RegistryKey;
 import net.minecraft.util.Identifier;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.ChunkPos;
@@ -24,28 +24,29 @@ import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
 
 public final class WarpCommands {
-    private WarpCommands() {}
     private static final Logger LOGGER = LoggerFactory.getLogger("simplybetterwarps");
-
-
     // --- Suggestion provider for warp names in the current dimension ---
-    private static final SuggestionProvider<ServerCommandSource> WARP_NAME_SUGGESTER= (ctx, builder) -> {
+    private static final SuggestionProvider<ServerCommandSource> WARP_NAME_SUGGESTER = (ctx, builder) -> {
         var wManager = WarpManager.get();
         var warps = wManager.listWarps().keySet().toArray(new String[0]);
         return CommandSource.suggestMatching(warps, builder);
     };
 
+
+    private WarpCommands() {
+    }
+
     public static void register(CommandDispatcher<ServerCommandSource> dispatcher) {
         // ----- Reusable executors -----
         Command<ServerCommandSource> HELP_EXECUTOR = ctx -> {
             ctx.getSource().sendFeedback(() -> Text.literal("""
-                [Simplybetterwarps] Commands:
-/warp <name>      - teleport to a warp in the current dimension
-/setwarp <name>   - create or overwrite a warp at your position
-/delwarp <name>   - delete a warp in the current dimension
-/warps            - list warps in the current dimension
-/warp help        - show this help
-"""), false);
+                                    [Simplybetterwarps] Commands:
+                    /warp <name>      - teleport to a warp in the current dimension
+                    /setwarp <name>   - create or overwrite a warp at your position
+                    /delwarp <name>   - delete a warp in the current dimension
+                    /warps            - list warps in the current dimension
+                    /warp help        - show this help
+                    """), false);
             return 1;
         };
         Command<ServerCommandSource> WARPTP_EXECUTOR = ctx -> {
@@ -57,30 +58,30 @@ public final class WarpCommands {
             }
             String warpName = StringArgumentType.getString(ctx, "name");
             var wManager = WarpManager.get();
-            try{
+            try {
                 WarpPoint wp = wManager.getWarp(warpName);
                 // Resolve target dimension from the warp itself
-                Identifier dimId = Identifier.tryParse(wp.dimensionId);
+                Identifier dimId = Identifier.tryParse(wp.dimensionId());
                 if (dimId == null) {
-                    source.sendError(Text.literal("Invalid dimension id on warp: " + wp.dimensionId));
+                    source.sendError(Text.literal("Invalid dimension id on warp: " + wp.dimensionId()));
                     return 0;
                 }
                 RegistryKey<World> targetKey = RegistryKey.of(RegistryKeys.WORLD, dimId);
                 ServerWorld targetWorld = player.getServer().getWorld(targetKey);
                 if (targetWorld == null) {
-                    source.sendError(Text.literal("Target dimension not found on server: " + wp.dimensionId));
+                    source.sendError(Text.literal("Target dimension not found on server: " + wp.dimensionId()));
                     return 0;
                 }
-                BlockPos targetPos = BlockPos.ofFloored(wp.x, wp.y, wp.z);
+                BlockPos targetPos = BlockPos.ofFloored(wp.x(), wp.y(), wp.z());
                 ChunkPos chunkPos = new ChunkPos(targetPos);
                 // Load chunk ticket to ensure the chunk is loaded
                 targetWorld.getChunkManager().addTicket(ChunkTicketType.POST_TELEPORT, chunkPos, 1, player.getId());
                 // Force load synchronously to FULL status (guard against edge cases)
                 targetWorld.getChunk(chunkPos.x, chunkPos.z);
-                player.teleport(targetWorld, wp.x, wp.y, wp.z, wp.yaw, wp.pitch);
-                source.sendFeedback(() -> Text.literal("Teleported to '" + warpName + "' in " + wp.dimensionId + "."), false);
+                player.teleport(targetWorld, wp.x(), wp.y(), wp.z(), wp.yaw(), wp.pitch());
+                source.sendFeedback(() -> Text.literal("Teleported to '" + warpName + "' in " + wp.dimensionId() + "."), false);
                 return 1;
-            }catch (Exception e){
+            } catch (Exception e) {
                 source.sendError(Text.literal(e.getMessage()));
                 LOGGER.error("Error during warp teleport:{}", e.getMessage(), e);
                 return 0;
@@ -97,7 +98,7 @@ public final class WarpCommands {
             WarpPoint wp = WarpPoint.fromPlayerPosition(p);
             var wManager = WarpManager.get();
             wManager.setWarp(warpName, wp);
-            ctx.getSource().sendFeedback(() -> Text.literal("[Simplybetterwarps] Warp '%s' saved. at %s%s".formatted(warpName, wp.dimensionId, String.format(" (%.1f, %.1f, %.1f)", wp.x, wp.y, wp.z))), false);
+            ctx.getSource().sendFeedback(() -> Text.literal("[Simplybetterwarps] Warp '%s' saved. at %s%s".formatted(warpName, wp.dimensionId(), String.format(" (%.1f, %.1f, %.1f)", wp.x(), wp.y(), wp.z()))), false);
             return 1;
         };
         Command<ServerCommandSource> DELWARP_EXECUTOR = ctx -> {
