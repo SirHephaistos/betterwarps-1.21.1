@@ -4,12 +4,12 @@ import net.fabricmc.api.DedicatedServerModInitializer;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 
-public class BetterWarpsServer implements DedicatedServerModInitializer {
+public class SimplyBetterWarpsServer implements DedicatedServerModInitializer {
 
     @Override
     public void onInitializeServer() {
         // load warps on server start
-        ServerLifecycleEvents.SERVER_STARTING.register(server -> WarpManager.get().load(server));
+        ServerLifecycleEvents.SERVER_STARTING.register(server -> WarpManager.get().load());
 
         // save warps on server stop
         ServerLifecycleEvents.SERVER_STOPPING.register(server -> WarpManager.get().save());

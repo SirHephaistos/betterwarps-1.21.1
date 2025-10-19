@@ -16,7 +16,7 @@
 	"environment": "*",
 	"entrypoints": {
       "server": [
-        "as.sirhephaistos.BetterWarpsServer"
+        "as.sirhephaistos.SimplyBetterWarpsServer"
       ]
 	},
 	"depends": {

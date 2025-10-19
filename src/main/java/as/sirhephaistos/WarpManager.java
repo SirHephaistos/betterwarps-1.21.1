@@ -21,6 +21,7 @@ import java.util.Map;
  */
 public final class WarpManager {
     private static final WarpManager INSTANCE = new WarpManager();
+    private static final Logger LOGGER = LoggerFactory.getLogger("simplybetterwarps");
     /**
      * Map<warpNameLower, WarpPoint>
      */
@@ -28,7 +29,6 @@ public final class WarpManager {
     private final Gson gson = new GsonBuilder().setPrettyPrinting().create();
     private final String fileName = "warps.json";
     private Path file;
-    private static final Logger LOGGER = LoggerFactory.getLogger("simplybetterwarps");
 
     private WarpManager() {
     }
