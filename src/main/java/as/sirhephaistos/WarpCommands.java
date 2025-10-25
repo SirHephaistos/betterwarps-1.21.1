@@ -5,6 +5,7 @@ import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import me.lucko.fabric.api.permissions.v0.Permissions;
+import net.fabricmc.fabric.api.util.TriState;
 import net.minecraft.command.CommandSource;
 import net.minecraft.registry.RegistryKey;
 import net.minecraft.registry.RegistryKeys;
@@ -28,7 +29,7 @@ import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
 
 public final class WarpCommands {
-    private static final Logger LOGGER = LoggerFactory.getLogger("simplybetterwarps");
+    private static final Logger LOGGER = LoggerFactory.getLogger("simplybetter-warps");
     // --- Suggestion provider: list of warps the user can see ---
     private static final SuggestionProvider<ServerCommandSource> WARP_NAME_SUGGESTER = (ctx, builder) -> {
         var wManager = WarpManager.get();
@@ -42,6 +43,12 @@ public final class WarpCommands {
 
     private WarpCommands() {
     }
+    private static boolean checkWildcardOrPerm(ServerCommandSource src, String node, String argument, int opLevelDefault,boolean shouldNegativePermOverride) {
+        final String permission = node.toLowerCase() + "." + argument.toLowerCase();
+        if (shouldNegativePermOverride &&  Permissions.getPermissionValue(src, permission) == TriState.FALSE ) return false;
+        return Permissions.check(src, node.toLowerCase() + ".*") || Permissions.check(src, permission, opLevelDefault);
+    }
+
 
     /**
      * Check if the source has permission to see the given warp in the warp list.
@@ -51,7 +58,8 @@ public final class WarpCommands {
      * @return true if the source has permission to see the warp
      */
     private static boolean canSeeWarp(ServerCommandSource src, String warpName) {
-        return Permissions.check(src, "simplybetterwarps.see." + warpName.toLowerCase(), 3) || Permissions.check(src, "simplybetterwarps.see.*");
+        /*return Permissions.check(src, "simplybetter.warps.see." + warpName.toLowerCase(), 1) || Permissions.check(src, "simplybetter.warps.see.*");*/
+        return checkWildcardOrPerm(src, "simplybetter.warps.see", warpName,1,true);
     }
 
     /**
@@ -62,7 +70,8 @@ public final class WarpCommands {
      * @return true if the source has permission to teleport to the warp
      */
     private static boolean canTpToWarp(ServerCommandSource src, String warpName) {
-        return Permissions.check(src, "simplybetterwarps.tpto." + warpName.toLowerCase(), 3) || Permissions.check(src, "simplybetterwarps.tpto.*");
+        /*return Permissions.check(src, "simplybetter.warps.tpto." + warpName.toLowerCase(), 1) || Permissions.check(src, "simplybetter.warps.tpto.*");*/
+        return checkWildcardOrPerm(src, "simplybetter.warps.tpto", warpName,1,true);
     }
 
     /**
@@ -119,7 +128,7 @@ public final class WarpCommands {
                 return 1;
             } catch (Exception e) {
                 source.sendError(Text.literal(e.getMessage()));
-                LOGGER.error("Error during warp teleport:{}", e.getMessage(), e);
+                LOGGER.error("[Simply Better Warps] Error during warp teleport:{}", e.getMessage(), e);
                 return 0;
             }
         };
@@ -204,10 +213,44 @@ public final class WarpCommands {
             return 1;
         };
 
+        Command<ServerCommandSource> INFO_EXECUTOR = ctx -> {
+            var source = ctx.getSource();
+            String warpName = StringArgumentType.getString(ctx, "name");
+
+            if (!canSeeWarp(source, warpName)) {
+                source.sendError(Text.literal("[Simply Better Warps] You don't have permission to teleport to '" + warpName + "'."));
+                return 0;
+            }
+            var warp = WarpManager.get().getWarp(warpName);
+            MutableText msg = Text.literal("[Simply Better Warps] Warp '").append(Text.literal(warpName).styled(s -> s.withColor(0x00ff00)))
+                    .append(Text.literal("': "))
+                    .append(Text.literal(String.format("Dimension: %s, Position: (%.1f, %.1f, %.1f), Yaw: %.1f, Pitch: %.1f",
+                            warp.dimensionId(), warp.x(), warp.y(), warp.z(), warp.yaw(), warp.pitch())));
+            source.sendFeedback(() -> msg, false);
+            return 1;
+        };
+
+        Command<ServerCommandSource> RENAMEWARP_EXECUTOR = ctx -> {
+            String oldName = StringArgumentType.getString(ctx, "oldname");
+            String newName = StringArgumentType.getString(ctx, "newname");
+            var wManager = WarpManager.get();
+            try {
+                wManager.renameWarp(oldName, newName);
+                ctx.getSource().sendFeedback(() -> Text.literal("[Simply Better Warps] Warp renamed from '%s' to '%s'.".formatted(oldName, newName)), false);
+                ctx.getSource().sendFeedback(() -> Text.literal("[Simply Better Warps] Note: Permissions are not automatically updated. Change them manually from '%s' to '%s'.".formatted(oldName,newName)), false);
+                return 1;
+            } catch (Exception e) {
+                ctx.getSource().sendError(Text.literal("[Simply Better Warps] " + e.getMessage()));
+                return 0;
+            }
+        };
+
+        // ----- Command registrations -----
+
         // /simplybetterwarps -> usage hint
         dispatcher.register(
                 literal("simplybetterwarps")
-                        .requires(src -> Permissions.check(src, "simplybetterwarps.basic", 1))
+                        .requires(src -> Permissions.check(src, "simplybetter.warps.basic", 1))
                         .executes(ctx -> {
                             ctx.getSource().sendFeedback(() -> Text.literal("[Simply Better Warps] Usage: /warp help"), false);
                             return 1;
@@ -217,25 +260,46 @@ public final class WarpCommands {
         // /warp, /warp help, /warp <name>
         dispatcher.register(
                 literal("warp")
-                        .requires(src -> Permissions.check(src, "simplybetterwarps.basic", 1))
+                        .requires(src -> Permissions.check(src, "simplybetter.warps.basic", 1))
                         .executes(HELP_EXECUTOR)
                         .then(literal("help")
-                                .requires(src -> Permissions.check(src, "simplybetterwarps.basic", 1))
+                                .requires(src -> Permissions.check(src, "simplybetter.warps.basic", 1))
                                 .executes(HELP_EXECUTOR)
                         )
                         .then(argument("name", StringArgumentType.word())
                                 .suggests(WARP_NAME_SUGGESTER)
-                                // Permission globale de base pour utiliser /warp,
-                                // le check fin par-warp est fait dans l'executor.
-                                .requires(src -> Permissions.check(src, "simplybetterwarps.warpto", 1))
+                                .requires(src -> Permissions.check(src, "simplybetter.warps.warpto", 1))
                                 .executes(WARPTP_EXECUTOR)
                         )
         );
 
+        // /warpinfo <name>
+        dispatcher.register(
+                literal("warpinfo")
+                        .requires(src -> Permissions.check(src, "simplybetter.warps.warpinfo",1))
+                        .then(argument("name", StringArgumentType.word())
+                                .suggests(WARP_NAME_SUGGESTER)
+                                .executes(INFO_EXECUTOR)
+                        )
+        );
+
+        // /renamewarp <oldname> <newname>
+        dispatcher.register(
+                literal("renamewarp")
+                        .requires(src -> Permissions.check(src, "simplybetter.warps.renamewarp", 1))
+                        .then(argument("oldname", StringArgumentType.word())
+                                .suggests(WARP_NAME_SUGGESTER)
+                                .then(argument("newname", StringArgumentType.word())
+                                        .executes(RENAMEWARP_EXECUTOR)
+                                )
+                        )
+        );
+
+
         // /setwarp <name>
         dispatcher.register(
                 literal("setwarp")
-                        .requires(src -> Permissions.check(src, "simplybetterwarps.setwarp", 1))
+                        .requires(src -> Permissions.check(src, "simplybetter.warps.setwarp", 1))
                         .then(argument("name", StringArgumentType.word())
                                 .suggests(WARP_NAME_SUGGESTER)
                                 .executes(SETWARP_EXECUTOR)
@@ -245,7 +309,7 @@ public final class WarpCommands {
         // /delwarp <name>
         dispatcher.register(
                 literal("delwarp")
-                        .requires(src -> Permissions.check(src, "simplybetterwarps.delwarp", 1))
+                        .requires(src -> Permissions.check(src, "simplybetter.warps.delwarp", 1))
                         .then(argument("name", StringArgumentType.word())
                                 .suggests(WARP_NAME_SUGGESTER)
                                 .executes(DELWARP_EXECUTOR)
@@ -255,7 +319,7 @@ public final class WarpCommands {
         // /warps
         dispatcher.register(
                 literal("warps")
-                        .requires(src -> Permissions.check(src, "simplybetterwarps.basic", 1))
+                        .requires(src -> Permissions.check(src, "simplybetter.warps.basic", 1))
                         .executes(LIST_EXECUTOR)
         );
     }

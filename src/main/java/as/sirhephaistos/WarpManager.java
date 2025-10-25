@@ -21,7 +21,7 @@ import java.util.Map;
  */
 public final class WarpManager {
     private static final WarpManager INSTANCE = new WarpManager();
-    private static final Logger LOGGER = LoggerFactory.getLogger("simplybetterwarps");
+    private static final Logger LOGGER = LoggerFactory.getLogger("simplybetter-warps");
     /**
      * Map<warpNameLower, WarpPoint>
      */
@@ -69,8 +69,10 @@ public final class WarpManager {
                     warps.put(name.toLowerCase(Locale.ROOT), WarpPoint.fromJson(obj));
                 }
             }
+
+            LOGGER.info("[Simply Better Warps] Simply Better Warps has been initialized");
         } catch (Exception e) {
-            LOGGER.error("Failed to load warps from {}", file.toString(), e);
+            LOGGER.error("[Simply Better Warps] Failed to load warps from {}", file.toString(), e);
         }
     }
 
@@ -91,8 +93,9 @@ public final class WarpManager {
             try (Writer writer = Files.newBufferedWriter(file)) {
                 gson.toJson(root, writer);
             }
+            LOGGER.info("[Simply Better Warps] Simply Better Warps has been saved");
         } catch (Exception e) {
-            LOGGER.error("Failed to save warps to {}", file.toString(), e);
+            LOGGER.error("[Simply Better Warps] Failed to save warps to {}", file.toString(), e);
         }
     }
 
@@ -131,5 +134,18 @@ public final class WarpManager {
             throw new IllegalArgumentException("Warp " + normName + " not found");
         }
         return warps.get(normName);
+    }
+
+    public void renameWarp(String oldName, String newName) {
+        String normOldName = normalizeName(oldName);
+        String normNewName = normalizeName(newName);
+        if (!warps.containsKey(normOldName)) {
+            throw new IllegalArgumentException("Warp " + normOldName + " not found");
+        }
+        if (warps.containsKey(normNewName)) {
+            throw new IllegalArgumentException("Warp " + normNewName + " already exists");
+        }
+        WarpPoint point = warps.remove(normOldName);
+        warps.put(normNewName, point);
     }
 }

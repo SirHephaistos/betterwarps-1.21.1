@@ -1,6 +1,6 @@
 {
 	"schemaVersion": 1,
-	"id": "simplybetterwarps",
+	"id": "simplybetter-warps",
 	"version": "${version}",
 	"name": "simplyBetterWarps",
 	"description": "Simple server side warp mod for Minecraft Fabric!",
